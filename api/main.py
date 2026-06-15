@@ -208,3 +208,50 @@ def decay_timeline():
         ORDER BY decade
     """)
     return {"title": "Legislative decay: amendments per decade", "data": results}
+
+
+# --- Bonus: Repeal Simulator ---
+
+@app.get("/api/bonus/repeal-simulator/{norm_id}")
+def repeal_simulator(norm_id: str):
+    """What would break if this norm were repealed? Shows all norms that depend on it."""
+    dependents = query("""
+        MATCH (dependent:Norm)-[:CITA|CONFORMIDAD|MODIFICA]->(target:Norm {id: $id})
+        WHERE dependent.vigente = true
+        RETURN dependent.id AS id, dependent.titulo AS titulo, dependent.rango AS rango
+        ORDER BY dependent.fecha_publicacion
+    """, id=norm_id)
+    target = query("""
+        MATCH (n:Norm {id: $id})
+        RETURN n.titulo AS titulo, n.vigente AS vigente
+    """, id=norm_id)
+    return {
+        "target": {"id": norm_id, **(target[0] if target else {})},
+        "impact_count": len(dependents),
+        "dependents": dependents,
+    }
+
+
+# --- Bonus: Orphan Chains (depth 2+) ---
+
+@app.get("/api/bonus/orphan-chains")
+def orphan_chains():
+    """Norms citing dead law that itself cites more dead law. Compounding legislative debt."""
+    stats = query("""
+        MATCH (alive:Norm)-[:CITA]->(dead1:Norm)-[:CITA]->(dead2:Norm)
+        WHERE alive.vigente = true AND dead1.vigente = false AND dead2.vigente = false
+        WITH count(DISTINCT alive) AS depth2_count
+        RETURN depth2_count
+    """)
+    examples = query("""
+        MATCH (alive:Norm)-[:CITA]->(dead1:Norm)-[:CITA]->(dead2:Norm)
+        WHERE alive.vigente = true AND dead1.vigente = false AND dead2.vigente = false
+        RETURN alive.id AS alive_id, alive.titulo AS alive_titulo,
+               dead1.id AS ghost1_id, dead1.titulo AS ghost1_titulo,
+               dead2.id AS ghost2_id, dead2.titulo AS ghost2_titulo
+        LIMIT 5
+    """)
+    return {
+        "depth2_count": stats[0]["depth2_count"] if stats else 0,
+        "examples": examples,
+    }

@@ -26,12 +26,6 @@ export default function GraphExplorer() {
   useEffect(() => {
     const id = centerId
     api(`/api/graph/neighborhood/${id}`).then(data => {
-      // Cap at 150 nodes for readability
-      if (data.nodes.length > 150) {
-        const nodeIds = new Set(data.nodes.slice(0, 150).map(n => n.id))
-        data.nodes = data.nodes.filter(n => nodeIds.has(n.id))
-        data.links = data.links.filter(l => nodeIds.has(l.source) && nodeIds.has(l.target))
-      }
       setGraphData(data)
     })
     setSelectedNode(null)

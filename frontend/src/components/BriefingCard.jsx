@@ -1,5 +1,7 @@
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useLang } from '../i18n'
+import { api } from '../api'
 
 const colors = {
   amber: { border: 'border-amber-500/30', bg: 'bg-amber-500/10', badge: 'bg-amber-500', text: 'text-amber-400' },
@@ -46,6 +48,13 @@ export default function BriefingCard({ num, data, color }) {
 
 function Briefing3Card({ data, c, t, title }) {
   const { stats, top_ghosts } = data
+  const { lang } = useLang()
+  const [orphans, setOrphans] = useState(null)
+
+  useEffect(() => {
+    api('/api/bonus/orphan-chains').then(d => setOrphans(d.depth2_count))
+  }, [])
+
   return (
     <div className={`rounded-xl border ${c.border} ${c.bg} p-6`}>
       <div className="flex items-center gap-3 mb-4">
@@ -59,6 +68,11 @@ function Briefing3Card({ data, c, t, title }) {
           <div className="text-slate-500 text-xs mt-1">
             {stats.citing_dead} {t.citingDead} → {stats.ghosts} {t.deadCited}
           </div>
+          {orphans && (
+            <div className="text-slate-500 text-xs mt-1">
+              ↳ {orphans} {lang === 'es' ? 'van 2+ niveles de profundidad' : 'go 2+ levels deep'}
+            </div>
+          )}
         </div>
       )}
       <p className="text-slate-400 text-xs mb-2 uppercase tracking-wide">{t.topGhosts}</p>

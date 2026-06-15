@@ -9,7 +9,7 @@ import { useLang } from './i18n'
 export default function App() {
   const [stats, setStats] = useState(null)
   const [briefings, setBriefings] = useState({})
-  const { t } = useLang()
+  const { t, lang } = useLang()
 
   useEffect(() => {
     api('/api/stats').then(setStats)
@@ -44,9 +44,12 @@ export default function App() {
 
       <DecayChart />
 
-      <div className="text-center mt-10">
-        <Link to="/graph/BOE-A-2015-10565" className="inline-block px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-medium transition">
+      <div className="flex justify-center gap-4 mt-10">
+        <Link to="/graph/BOE-A-2015-10565" className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-medium transition">
           {t.exploreGraph}
+        </Link>
+        <Link to="/simulator" className="px-6 py-3 bg-red-600/80 hover:bg-red-500 text-white rounded-lg font-medium transition">
+          {lang === 'es' ? '🔬 Simulador de Derogación' : '🔬 Repeal Simulator'}
         </Link>
       </div>
     </div>

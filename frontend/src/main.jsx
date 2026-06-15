@@ -5,6 +5,7 @@ import { LangProvider, LangToggle } from './i18n'
 import './index.css'
 import App from './App'
 import GraphExplorer from './pages/GraphExplorer'
+import RepealSimulator from './pages/RepealSimulator'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
@@ -13,6 +14,7 @@ createRoot(document.getElementById('root')).render(
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<App />} />
+          <Route path="/simulator" element={<RepealSimulator />} />
           <Route path="/graph" element={<GraphExplorer />} />
           <Route path="/graph/:normId" element={<GraphExplorer />} />
         </Routes>
