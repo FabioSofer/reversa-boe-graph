@@ -131,13 +131,13 @@ def get_norm(norm_id: str):
         return {"error": "Norm not found"}
 
     edges = query("""
-        MATCH (n:Norm {id: $id})-[r]->(target:Norm)
-        RETURN n.id AS source, target.id AS target, target.titulo AS target_titulo,
-               target.vigente AS target_vigente, type(r) AS rel_type
+        MATCH (n:Norm {id: $id})-[r]->(other:Norm)
+        RETURN n.id AS source, other.id AS target, other.titulo AS other_titulo,
+               other.vigente AS other_vigente, type(r) AS rel_type, 'outgoing' AS direction
         UNION
-        MATCH (source:Norm)-[r]->(n:Norm {id: $id})
-        RETURN source.id AS source, n.id AS target, source.titulo AS source_titulo,
-               source.vigente AS source_vigente, type(r) AS rel_type
+        MATCH (other:Norm)-[r]->(n:Norm {id: $id})
+        RETURN other.id AS source, n.id AS target, other.titulo AS other_titulo,
+               other.vigente AS other_vigente, type(r) AS rel_type, 'incoming' AS direction
     """, id=norm_id)
 
     return {"norm": norm[0], "edges": edges}
@@ -193,3 +193,18 @@ def stats():
         RETURN total, vigente, repealed, relationships
     """)
     return result[0] if result else {}
+
+
+# --- Bonus: Legislative Decay Timeline ---
+
+@app.get("/api/bonus/decay-timeline")
+def decay_timeline():
+    """Amendments per decade — shows legislative complexity accelerating."""
+    results = query("""
+        MATCH (n:Norm)-[:MODIFICA]->()
+        WITH substring(n.fecha_publicacion, 0, 3) + "0" AS decade, count(*) AS amendments
+        WHERE decade >= "1960"
+        RETURN decade, amendments
+        ORDER BY decade
+    """)
+    return {"title": "Legislative decay: amendments per decade", "data": results}
