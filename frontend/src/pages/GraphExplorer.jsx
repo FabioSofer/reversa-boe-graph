@@ -9,9 +9,11 @@ export default function GraphExplorer() {
   const navigate = useNavigate()
   const svgRef = useRef()
   const d3Refs = useRef({ zoom: null, g: null, node: null, simulation: null })
-  const { t } = useLang()
+  const { t, lang } = useLang()
   const [graphData, setGraphData] = useState(null)
   const [selectedNode, setSelectedNode] = useState(null)
+  const [repealImpact, setRepealImpact] = useState(null)
+  const [repealDependentIds, setRepealDependentIds] = useState(new Set())
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState(null)
   const [centerId, setCenterId] = useState(normId || 'BOE-A-2015-10565')
@@ -27,8 +29,10 @@ export default function GraphExplorer() {
     const id = centerId
     api(`/api/graph/neighborhood/${id}`).then(data => {
       setGraphData(data)
+      // Auto-select center node
+      const center = data.nodes.find(n => n.id === id)
+      if (center) setSelectedNode(center)
     })
-    setSelectedNode(null)
   }, [centerId])
 
   // Update centerId when route changes
@@ -51,6 +55,15 @@ export default function GraphExplorer() {
     svg.selectAll('*').remove()
 
     const g = svg.append('g')
+
+    // Glow filter for repeal highlight
+    const defs = svg.append('defs')
+    const filter = defs.append('filter').attr('id', 'glow').attr('x', '-50%').attr('y', '-50%').attr('width', '200%').attr('height', '200%')
+    filter.append('feGaussianBlur').attr('stdDeviation', '8').attr('result', 'coloredBlur')
+    const feMerge = filter.append('feMerge')
+    feMerge.append('feMergeNode').attr('in', 'coloredBlur')
+    feMerge.append('feMergeNode').attr('in', 'coloredBlur')
+    feMerge.append('feMergeNode').attr('in', 'SourceGraphic')
 
     // Zoom
     const zoom = d3.zoom()
@@ -83,6 +96,7 @@ export default function GraphExplorer() {
       .attr('stroke', d => relColors[d.type] || '#94a3b8')
       .attr('stroke-opacity', 0.7)
       .attr('stroke-width', 1.5)
+      .style('cursor', 'pointer')
 
     // Nodes
     const node = g.append('g')
@@ -135,6 +149,17 @@ export default function GraphExplorer() {
         .html(`<strong>${d.id}</strong><br/>${d.titulo?.substring(0, 80)}`)
     }).on('mouseleave', () => tooltip.style('opacity', 0))
 
+    link.on('mouseenter', (event, d) => {
+      tooltip.style('opacity', 1)
+        .style('left', event.pageX + 12 + 'px')
+        .style('top', event.pageY - 10 + 'px')
+        .html(`<strong>${d.type}</strong>`)
+      d3.select(event.target).attr('stroke-width', 3)
+    }).on('mouseleave', (event) => {
+      tooltip.style('opacity', 0)
+      d3.select(event.target).attr('stroke-width', 1.5)
+    })
+
     // Store refs for external access (sidebar clicks)
     d3Refs.current = { zoom, g, node, simulation }
 
@@ -181,6 +206,11 @@ export default function GraphExplorer() {
         svg.transition().duration(400).call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale))
       }
       prevSelectedId.current = selectedNode.id
+      // Fetch repeal impact for this node
+      api(`/api/bonus/repeal-simulator/${selectedNode.id}`).then(d => {
+        setRepealImpact(d.impact_count)
+        setRepealDependentIds(new Set(d.dependents.map(dep => dep.id)))
+      })
     }
   }, [selectedNode])
 
@@ -269,6 +299,32 @@ export default function GraphExplorer() {
               >
                 {t.exploreRelations}
               </button>
+
+              {repealImpact > 0 && (
+                <div
+                  className="mt-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg cursor-default"
+                  onMouseEnter={() => {
+                    if (!d3Refs.current.node) return
+                    d3Refs.current.node.attr('fill', n => {
+                      if (n.id === centerId) return '#6366f1'
+                      if (repealDependentIds.has(n.id)) return '#ff2222'
+                      return n.vigente ? '#22c55e' : '#ef4444'
+                    }).attr('r', n => repealDependentIds.has(n.id) ? 12 : (n.id === centerId ? 14 : 8))
+                      .attr('filter', n => repealDependentIds.has(n.id) ? 'url(#glow)' : null)
+                  }}
+                  onMouseLeave={() => {
+                    if (!d3Refs.current.node) return
+                    d3Refs.current.node.attr('fill', n => {
+                      if (n.id === centerId) return '#6366f1'
+                      return n.vigente ? '#22c55e' : '#ef4444'
+                    }).attr('r', n => n.id === centerId ? 14 : 8)
+                      .attr('filter', null)
+                  }}
+                >
+                  <span className="text-red-400 font-bold text-lg">{repealImpact}</span>
+                  <span className="text-slate-300 ml-2 text-sm">{lang === 'es' ? 'normas dependen de esta' : 'norms depend on this'}</span>
+                </div>
+              )}
 
               <a
                 href={`https://www.boe.es/buscar/act.php?id=${selectedNode.id}`}

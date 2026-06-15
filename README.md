@@ -20,8 +20,11 @@ All results are live Cypher queries against 12,307 real norms and 31,735 relatio
 - **Dashboard** with the 4 briefing cards, corpus stats, and search
 - **Interactive graph explorer** — D3.js force-directed visualization with zoom, search, and click-to-inspect
 - **Relationship browser** — click any node to see its connections grouped by type (Modifica, Deroga, Cita, Añade, Conformidad, Desarrolla)
+- **Repeal simulator** — search any norm and see how many laws would break if it were repealed, with red glow highlighting dependents on the graph
+- **Legislative decay timeline** — bar chart showing amendments per decade (exponential growth)
+- **Orphan chain detection** — identifies norms citing dead law that itself cites more dead law (2+ levels deep)
 - **Bilingual** — full ES/EN toggle
-- **Navigable** — in-app back navigation, URL-based routing per norm
+- **Navigable** — in-app back navigation, URL-based routing per norm, edge tooltips
 
 ## Architecture
 
@@ -30,7 +33,7 @@ BOE Public API (boe.es/datosabiertos)
     ↓  async ingestion (Python 3.12 / aiohttp, 10 concurrent)
 Neo4j AuraDB Free (12,307 nodes, 31,735 edges)
     ↓  Cypher queries (<200ms per briefing)
-FastAPI backend (7 endpoints)
+FastAPI backend (10 endpoints)
     ↓
 React + D3.js + TailwindCSS frontend
     ↓
@@ -42,7 +45,7 @@ Single Render deployment (API + static frontend, same origin)
 1. **Used `/id/{id}/analisis` endpoint** (~5KB) instead of the full norm endpoint (~480KB). Made ingestion feasible in 5 minutes instead of hours.
 2. **Discovered CITA is not bidirectional** in the BOE API. Briefings 3-4 required scanning all norms' outgoing edges — can't rely on the target norm's incoming references.
 3. **Neo4j over SQLite** — the 4 briefings are graph traversals (degree counts, path existence). Cypher expresses them in 3-5 lines vs. awkward self-joins.
-4. **150-node cap on graph views** — keeps the visualization readable without sacrificing the ability to explore any norm.
+4. **Repeal simulator with visual blast radius** — hover the impact count to see dependent nodes glow red on the graph. Makes legislative risk tangible.
 
 ## Project Structure
 

@@ -24,17 +24,20 @@ export default function DecayChart() {
     <div className="mt-8 rounded-xl border border-slate-700/30 bg-slate-800/30 p-6">
       <h2 className="text-lg font-semibold text-white mb-1">{title}</h2>
       <p className="text-slate-400 text-sm mb-4">{subtitle}</p>
-      <div className="flex items-end gap-2 h-40">
-        {data.map(d => (
-          <div key={d.decade} className="flex-1 flex flex-col items-center gap-1">
-            <span className="text-xs text-slate-400">{d.amendments.toLocaleString()}</span>
-            <div
-              className="w-full bg-amber-500/80 rounded-t transition-all"
-              style={{ height: `${(d.amendments / max) * 100}%`, minHeight: '2px' }}
-            />
-            <span className="text-xs text-slate-500">{d.decade}s</span>
-          </div>
-        ))}
+      <div className="flex items-end gap-2" style={{ height: '160px' }}>
+        {data.map(d => {
+          const pct = (d.amendments / max) * 100
+          return (
+            <div key={d.decade} className="flex-1 flex flex-col items-center justify-end h-full">
+              <span className="text-xs text-slate-400 mb-1">{d.amendments.toLocaleString()}</span>
+              <div
+                className="w-full bg-amber-500/80 rounded-t"
+                style={{ height: `${Math.max(pct, 1)}%` }}
+              />
+              <span className="text-xs text-slate-500 mt-1">{d.decade}s</span>
+            </div>
+          )
+        })}
       </div>
     </div>
   )

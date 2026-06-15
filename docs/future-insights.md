@@ -5,17 +5,15 @@ Powerful queries enabled by the knowledge graph that could extend the platform.
 ## Implemented
 
 ### Legislative Decay Timeline
-Amendments per decade — shows the statute book complexity is accelerating, not stabilizing.
-
-## Candidates
+Amendments per decade — shows the statute book complexity is accelerating, not stabilizing. Bar chart on the dashboard.
 
 ### Orphan Chains (depth 2+)
-In-force norms citing repealed norms that themselves cite other repealed norms. Shows compounding legislative debt.
-```cypher
-MATCH (alive:Norm)-[:CITA]->(dead1:Norm)-[:CITA]->(dead2:Norm)
-WHERE alive.vigente = true AND dead1.vigente = false AND dead2.vigente = false
-RETURN count(DISTINCT alive)
-```
+In-force norms citing repealed norms that themselves cite other repealed norms. Shows compounding legislative debt. Displayed as a stat in Briefing 3 (207 norms go 2+ levels deep).
+
+### Repeal Simulator
+Search any norm, see how many in-force laws depend on it. Hover the impact count on the graph to highlight dependents with a red glow. Available at `/simulator` and in the graph sidebar.
+
+## Candidates
 
 ### Single Points of Failure
 Norms with the highest in-degree from live law. The "load-bearing walls" — if repealed, the most live norms would break.
