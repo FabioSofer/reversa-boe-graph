@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api'
+import { useLang } from '../i18n'
 
 export default function SearchBar() {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState(null)
   const navigate = useNavigate()
+  const { t } = useLang()
 
   const handleSearch = async (e) => {
     e.preventDefault()
@@ -21,11 +23,11 @@ export default function SearchBar() {
           type="text"
           value={query}
           onChange={e => setQuery(e.target.value)}
-          placeholder="Buscar normas... (ej: impuesto, educación, medio ambiente)"
+          placeholder={t.searchPlaceholder}
           className="flex-1 px-4 py-3 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
         />
         <button type="submit" className="px-6 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition">
-          Buscar
+          {t.search}
         </button>
       </form>
       {results && (
@@ -41,7 +43,7 @@ export default function SearchBar() {
               <div className="text-xs text-slate-500 flex gap-3">
                 <span>{r.rango}</span>
                 <span className={r.vigente ? 'text-green-500' : 'text-red-500'}>
-                  {r.vigente ? 'Vigente' : 'Derogada'}
+                  {r.vigente ? t.vigente : t.derogada}
                 </span>
               </div>
             </button>

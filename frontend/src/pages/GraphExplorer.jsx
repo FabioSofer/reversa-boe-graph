@@ -2,26 +2,44 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import * as d3 from 'd3'
 import { api } from '../api'
+import { useLang } from '../i18n'
 
 export default function GraphExplorer() {
   const { normId } = useParams()
   const navigate = useNavigate()
   const svgRef = useRef()
+  const d3Refs = useRef({ zoom: null, g: null, node: null, simulation: null })
+  const { t } = useLang()
   const [graphData, setGraphData] = useState(null)
-  const [selectedNorm, setSelectedNorm] = useState(null)
+  const [selectedNode, setSelectedNode] = useState(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState(null)
-  const [centerId, setCenterId] = useState(normId || 'BOE-A-1992-26318')
+  const [centerId, setCenterId] = useState(normId || 'BOE-A-2015-10565')
+  const [history, setHistory] = useState([])
+
+  // Redirect bare /graph to include the default ID
+  useEffect(() => {
+    if (!normId) navigate('/graph/BOE-A-2015-10565', { replace: true })
+  }, [])
 
   // Load graph data
   useEffect(() => {
-    api(`/api/graph/neighborhood/${centerId}`).then(setGraphData)
-    api(`/api/graph/norm/${centerId}`).then(d => setSelectedNorm(d.norm))
+    const id = centerId
+    api(`/api/graph/neighborhood/${id}`).then(data => {
+      // Cap at 150 nodes for readability
+      if (data.nodes.length > 150) {
+        const nodeIds = new Set(data.nodes.slice(0, 150).map(n => n.id))
+        data.nodes = data.nodes.filter(n => nodeIds.has(n.id))
+        data.links = data.links.filter(l => nodeIds.has(l.source) && nodeIds.has(l.target))
+      }
+      setGraphData(data)
+    })
+    setSelectedNode(null)
   }, [centerId])
 
   // Update centerId when route changes
   useEffect(() => {
-    if (normId && normId !== centerId) setCenterId(normId)
+    if (normId !== centerId) setCenterId(normId || null)
   }, [normId])
 
   // D3 force simulation
@@ -31,6 +49,7 @@ export default function GraphExplorer() {
     const { nodes, links } = graphData
     if (nodes.length === 0) return
 
+    const currentCenterId = centerId
     const svg = d3.select(svgRef.current)
     const width = svg.node().getBoundingClientRect().width
     const height = svg.node().getBoundingClientRect().height
@@ -45,30 +64,30 @@ export default function GraphExplorer() {
       .on('zoom', (event) => g.attr('transform', event.transform))
     svg.call(zoom)
 
-    // Color scale for relationship types
     const relColors = {
       MODIFICA: '#f59e0b',
       DEROGA: '#ef4444',
       CITA: '#8b5cf6',
       ANADE: '#10b981',
-      CONFORMIDAD: '#6b7280',
-      OTRA_RELACION: '#475569',
+      CONFORMIDAD: '#60a5fa',
+      DESARROLLA: '#14b8a6',
+      OTRA_RELACION: '#94a3b8',
     }
 
     // Force simulation
     const simulation = d3.forceSimulation(nodes)
       .force('link', d3.forceLink(links).id(d => d.id).distance(80))
-      .force('charge', d3.forceManyBody().strength(-200))
+      .force('charge', d3.forceManyBody().strength(-300))
       .force('center', d3.forceCenter(width / 2, height / 2))
-      .force('collision', d3.forceCollide(20))
+      .force('collision', d3.forceCollide(25))
 
     // Links
     const link = g.append('g')
       .selectAll('line')
       .data(links)
       .join('line')
-      .attr('stroke', d => relColors[d.type] || '#475569')
-      .attr('stroke-opacity', 0.6)
+      .attr('stroke', d => relColors[d.type] || '#94a3b8')
+      .attr('stroke-opacity', 0.7)
       .attr('stroke-width', 1.5)
 
     // Nodes
@@ -76,66 +95,100 @@ export default function GraphExplorer() {
       .selectAll('circle')
       .data(nodes)
       .join('circle')
-      .attr('r', d => d.id === centerId ? 12 : 7)
+      .attr('r', d => d.id === currentCenterId ? 14 : 8)
       .attr('fill', d => {
-        if (d.id === centerId) return '#6366f1'
+        if (d.id === currentCenterId) return '#6366f1'
         return d.vigente ? '#22c55e' : '#ef4444'
       })
-      .attr('stroke', d => d.id === centerId ? '#fff' : 'none')
-      .attr('stroke-width', 2)
+      .attr('stroke', '#0f172a')
+      .attr('stroke-width', 1.5)
       .style('cursor', 'pointer')
       .on('click', (event, d) => {
-        navigate(`/graph/${d.id}`)
+        // Just select — show in sidebar
+        setSelectedNode(d)
+        // Highlight selected
+        node.attr('stroke', n => n.id === d.id ? '#fff' : '#0f172a')
+          .attr('stroke-width', n => n.id === d.id ? 3 : 1.5)
       })
-      .call(d3.drag()
-        .on('start', (event, d) => { if (!event.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y })
-        .on('drag', (event, d) => { d.fx = event.x; d.fy = event.y })
-        .on('end', (event, d) => { if (!event.active) simulation.alphaTarget(0); d.fx = null; d.fy = null })
-      )
 
-    // Labels for center node and immediate neighbors
-    const label = g.append('g')
+    // Labels: short ID on all nodes (e.g. "1992-26318"), full title on center
+    const getShortLabel = (d) => {
+      // BOE-A-1992-26318 → "1992-26318"
+      const parts = d.id.match(/(\d{4})-(\d+)$/)
+      return parts ? `${parts[1]}-${parts[2]}` : d.id.slice(-8)
+    }
+
+    g.append('g')
       .selectAll('text')
-      .data(nodes.filter(d => d.id === centerId))
+      .data(nodes)
       .join('text')
-      .text(d => d.titulo?.substring(0, 50) + '...')
-      .attr('font-size', 10)
-      .attr('fill', '#e2e8f0')
-      .attr('dx', 15)
-      .attr('dy', 4)
+      .text(d => d.id === currentCenterId ? d.titulo?.substring(0, 40) + '...' : getShortLabel(d))
+      .attr('font-size', d => d.id === currentCenterId ? 10 : 7)
+      .attr('fill', d => d.id === currentCenterId ? '#e2e8f0' : '#94a3b8')
+      .attr('dx', d => d.id === currentCenterId ? 18 : 11)
+      .attr('dy', 3)
+      .style('pointer-events', 'none')
 
-    // Tooltip
+    // Tooltip on hover
     const tooltip = d3.select('body').append('div')
       .attr('class', 'fixed bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-xs text-white pointer-events-none opacity-0 max-w-xs z-50')
       .style('transition', 'opacity 0.15s')
 
     node.on('mouseenter', (event, d) => {
-      tooltip
-        .style('opacity', 1)
-        .style('left', event.pageX + 10 + 'px')
+      tooltip.style('opacity', 1)
+        .style('left', event.pageX + 12 + 'px')
         .style('top', event.pageY - 10 + 'px')
-        .html(`<strong>${d.id}</strong><br/>${d.titulo?.substring(0, 100)}<br/><span class="${d.vigente ? 'text-green-400' : 'text-red-400'}">${d.vigente ? 'Vigente' : 'Derogada'}</span>`)
+        .html(`<strong>${d.id}</strong><br/>${d.titulo?.substring(0, 80)}`)
     }).on('mouseleave', () => tooltip.style('opacity', 0))
 
-    // Tick
+    // Store refs for external access (sidebar clicks)
+    d3Refs.current = { zoom, g, node, simulation }
+
     simulation.on('tick', () => {
       link.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
         .attr('x2', d => d.target.x).attr('y2', d => d.target.y)
       node.attr('cx', d => d.x).attr('cy', d => d.y)
-      label.attr('x', d => d.x).attr('y', d => d.y)
+      g.selectAll('text').attr('x', d => d.x).attr('y', d => d.y)
     })
 
-    // Initial zoom to fit
+    // Zoom to fit after stabilization
     setTimeout(() => {
       const bounds = g.node().getBBox()
-      const scale = Math.min(width / bounds.width, height / bounds.height) * 0.8
+      if (bounds.width === 0) return
+      const scale = Math.min(width / bounds.width, height / bounds.height) * 0.75
       const tx = width / 2 - (bounds.x + bounds.width / 2) * scale
       const ty = height / 2 - (bounds.y + bounds.height / 2) * scale
       svg.transition().duration(500).call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale))
-    }, 1000)
+    }, 800)
 
     return () => { tooltip.remove(); simulation.stop() }
   }, [graphData, centerId])
+
+  // Pan camera + highlight when a DIFFERENT node is selected
+  const prevSelectedId = useRef(null)
+  useEffect(() => {
+    if (!selectedNode || !d3Refs.current.node || !svgRef.current) return
+    const { zoom, node } = d3Refs.current
+    const svg = d3.select(svgRef.current)
+
+    // Highlight
+    node.attr('stroke', n => n.id === selectedNode.id ? '#fff' : '#0f172a')
+      .attr('stroke-width', n => n.id === selectedNode.id ? 3 : 1.5)
+
+    // Only pan if we selected a different node (not just toggling _showRels)
+    if (selectedNode.id !== prevSelectedId.current) {
+      const target = node.data().find(n => n.id === selectedNode.id)
+      if (target && target.x != null) {
+        const width = svg.node().getBoundingClientRect().width
+        const height = svg.node().getBoundingClientRect().height
+        const scale = 1.5
+        const tx = width / 2 - target.x * scale
+        const ty = height / 2 - target.y * scale
+        svg.transition().duration(400).call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale))
+      }
+      prevSelectedId.current = selectedNode.id
+    }
+  }, [selectedNode])
 
   const handleSearch = async (e) => {
     e.preventDefault()
@@ -148,28 +201,34 @@ export default function GraphExplorer() {
     <div className="h-screen flex flex-col">
       {/* Top bar */}
       <div className="flex items-center gap-4 p-4 bg-slate-900 border-b border-slate-800">
-        <Link to="/" className="text-slate-400 hover:text-white">← Informes</Link>
+        <Link to="/" className="text-slate-400 hover:text-white text-sm">{t.back}</Link>
         <form onSubmit={handleSearch} className="flex-1 max-w-md flex gap-2">
           <input
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            placeholder="Buscar norma..."
+            placeholder={t.searchNorm}
             className="flex-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
           />
-          <button type="submit" className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white text-sm rounded">Ir</button>
+          <button type="submit" className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white text-sm rounded">{t.go}</button>
         </form>
-
-        {/* Legend */}
-        <div className="flex gap-4 text-xs text-slate-400">
-          <span><span className="inline-block w-3 h-3 rounded-full bg-green-500 mr-1"></span>Vigente</span>
-          <span><span className="inline-block w-3 h-3 rounded-full bg-red-500 mr-1"></span>Derogada</span>
-          <span><span className="inline-block w-3 h-3 rounded-full bg-indigo-500 mr-1"></span>Centro</span>
+        <div className="flex gap-3 text-xs text-slate-400">
+          <span><span className="inline-block w-2.5 h-2.5 rounded-full bg-green-500 mr-1"></span>{t.vigente}</span>
+          <span><span className="inline-block w-2.5 h-2.5 rounded-full bg-red-500 mr-1"></span>{t.derogada}</span>
+          <span><span className="inline-block w-2.5 h-2.5 rounded-full bg-indigo-500 mr-1"></span>{t.center}</span>
+          <span className="text-slate-600">|</span>
+          <span><span className="inline-block w-3 h-0.5 bg-amber-500 mr-1 align-middle"></span>Modifica</span>
+          <span><span className="inline-block w-3 h-0.5 bg-red-500 mr-1 align-middle"></span>Deroga</span>
+          <span><span className="inline-block w-3 h-0.5 bg-purple-500 mr-1 align-middle"></span>Cita</span>
+          <span><span className="inline-block w-3 h-0.5 bg-emerald-500 mr-1 align-middle"></span>Añade</span>
+          <span><span className="inline-block w-3 h-0.5 bg-blue-400 mr-1 align-middle"></span>Conformidad</span>
+          <span><span className="inline-block w-3 h-0.5 bg-teal-500 mr-1 align-middle"></span>Desarrolla</span>
+          <span><span className="inline-block w-3 h-0.5 bg-slate-400 mr-1 align-middle"></span>Otra</span>
         </div>
       </div>
 
       {/* Search results dropdown */}
       {searchResults && (
-        <div className="absolute top-16 left-20 z-50 bg-slate-800 border border-slate-700 rounded-lg w-96 max-h-60 overflow-y-auto">
+        <div className="absolute top-16 left-20 z-50 bg-slate-800 border border-slate-700 rounded-lg w-96 max-h-60 overflow-y-auto shadow-xl">
           {searchResults.map(r => (
             <button
               key={r.id}
@@ -183,54 +242,119 @@ export default function GraphExplorer() {
         </div>
       )}
 
-      {/* Main content: graph + sidebar */}
+      {/* Main content */}
       <div className="flex-1 flex">
-        {/* Graph */}
         <svg ref={svgRef} className="flex-1 bg-slate-950" />
 
         {/* Sidebar */}
         <div className="w-80 bg-slate-900 border-l border-slate-800 p-4 overflow-y-auto">
-          {selectedNorm ? (
+          {history.length > 0 && (
+            <button
+              onClick={() => { const prev = history[history.length - 1]; setHistory(h => h.slice(0, -1)); navigate(prev ? `/graph/${prev}` : '/graph') }}
+              className="mb-3 text-xs text-slate-400 hover:text-white flex items-center gap-1"
+            >
+              {t.previous}
+            </button>
+          )}
+          {selectedNode ? (
             <>
-              <h3 className="text-white font-semibold text-sm mb-2">{selectedNorm.titulo}</h3>
+              <h3 className="text-white font-semibold text-sm mb-3 leading-tight">{selectedNode.titulo}</h3>
               <div className="space-y-2 text-xs text-slate-400">
-                <p><span className="text-slate-500">ID:</span> {selectedNorm.id}</p>
-                <p><span className="text-slate-500">Rango:</span> {selectedNorm.rango}</p>
-                <p><span className="text-slate-500">Publicación:</span> {selectedNorm.fecha_publicacion}</p>
+                <p><span className="text-slate-500">{t.id}:</span> {selectedNode.id}</p>
                 <p>
-                  <span className="text-slate-500">Estado: </span>
-                  <span className={selectedNorm.vigente ? 'text-green-400' : 'text-red-400'}>
-                    {selectedNorm.vigente ? 'Vigente' : 'Derogada'}
+                  <span className="text-slate-500">{t.status}: </span>
+                  <span className={selectedNode.vigente ? 'text-green-400' : 'text-red-400'}>
+                    {selectedNode.vigente ? t.vigente : t.derogada}
                   </span>
                 </p>
-                {selectedNorm.url_eli && (
-                  <a href={selectedNorm.url_eli} target="_blank" rel="noopener noreferrer"
-                    className="text-indigo-400 hover:underline block mt-2">
-                    Ver en BOE →
-                  </a>
-                )}
               </div>
-              {graphData && (
-                <div className="mt-4">
-                  <p className="text-slate-500 text-xs mb-2">
-                    {graphData.nodes.length} nodos · {graphData.links.length} conexiones
-                  </p>
-                  {/* Relationship type breakdown */}
-                  <div className="space-y-1">
-                    {Object.entries(
-                      graphData.links.reduce((acc, l) => { acc[l.type] = (acc[l.type] || 0) + 1; return acc }, {})
-                    ).sort((a, b) => b[1] - a[1]).map(([type, count]) => (
-                      <div key={type} className="flex justify-between text-xs">
-                        <span className="text-slate-400">{type}</span>
-                        <span className="text-slate-500">{count}</span>
+
+              <button
+                onClick={() => { setHistory(h => [...h, centerId]); navigate(`/graph/${selectedNode.id}`) }}
+                className="mt-4 w-full px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm rounded transition"
+              >
+                {t.exploreRelations}
+              </button>
+
+              <a
+                href={`https://www.boe.es/buscar/act.php?id=${selectedNode.id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block mt-2 text-center text-xs text-indigo-400 hover:underline"
+              >
+                {t.viewBOE}
+              </a>
+
+              {/* Relationships table */}
+              {graphData && (() => {
+                const outgoing = graphData.links.filter(l => (l.source.id || l.source) === selectedNode.id)
+                const incoming = graphData.links.filter(l => (l.target.id || l.target) === selectedNode.id)
+                const nodeMap = Object.fromEntries(graphData.nodes.map(n => [n.id, n]))
+                const grouped = {}
+                outgoing.forEach(l => {
+                  const key = l.type + ' →'
+                  if (!grouped[key]) grouped[key] = []
+                  const targetId = l.target.id || l.target
+                  grouped[key].push(nodeMap[targetId])
+                })
+                incoming.forEach(l => {
+                  const key = '← ' + l.type
+                  if (!grouped[key]) grouped[key] = []
+                  const sourceId = l.source.id || l.source
+                  grouped[key].push(nodeMap[sourceId])
+                })
+                if (Object.keys(grouped).length === 0) return null
+                return (
+                  <div className="mt-4 pt-3 border-t border-slate-800">
+                    <button onClick={() => setSelectedNode({...selectedNode, _showRels: !selectedNode._showRels})} className="text-slate-500 text-xs uppercase tracking-wide mb-2 hover:text-slate-300 w-full text-left">
+                      {selectedNode._showRels ? '▾' : '▸'} {t.connections} ({graphData.links.filter(l => (l.source.id || l.source) === selectedNode.id || (l.target.id || l.target) === selectedNode.id).length})
+                    </button>
+                    {selectedNode._showRels && Object.entries(grouped).map(([type, norms]) => (
+                      <div key={type} className="mb-3">
+                        <p className="text-xs font-medium text-slate-400 mb-1">{type} <span className="text-slate-600">({norms.length})</span></p>
+                        <div className="space-y-1 pl-2 border-l border-slate-800">
+                          {norms.filter(Boolean).slice(0, 10).map(n => (
+                            <button
+                              key={n.id}
+                              onClick={() => setSelectedNode(n)}
+                              className="block text-left text-xs text-slate-300 hover:text-white truncate w-full"
+                            >
+                              <span className={`inline-block w-2 h-2 rounded-full mr-1.5 ${n.vigente ? 'bg-green-500' : 'bg-red-500'}`}></span>
+                              {n.titulo?.substring(0, 60)}
+                            </button>
+                          ))}
+                          {norms.length > 10 && <p className="text-xs text-slate-600">+{norms.length - 10} más</p>}
+                        </div>
                       </div>
                     ))}
                   </div>
-                </div>
-              )}
+                )
+              })()}
             </>
           ) : (
-            <p className="text-slate-500 text-sm">Selecciona una norma para ver sus detalles</p>
+            <div className="text-slate-500 text-sm">
+              <p className="mb-2">{t.clickNode}</p>
+              <p className="text-xs">{t.dragHint}</p>
+            </div>
+          )}
+
+          {/* Graph stats */}
+          {graphData && (
+            <div className="mt-6 pt-4 border-t border-slate-800">
+              <p className="text-slate-500 text-xs mb-2">
+                {graphData.nodes.length} {t.nodes} · {graphData.links.length} {t.connections}
+              </p>
+              <div className="space-y-1">
+                {Object.entries(
+                  graphData.links.reduce((acc, l) => { acc[l.type] = (acc[l.type] || 0) + 1; return acc }, {})
+                ).sort((a, b) => b[1] - a[1]).map(([type, count]) => (
+                  <div key={type} className="flex justify-between text-xs">
+                    <span className="text-slate-400">{type}</span>
+                    <span className="text-slate-500">{count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
         </div>
       </div>
