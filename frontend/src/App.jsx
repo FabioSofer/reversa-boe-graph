@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
 import BriefingCard from './components/BriefingCard'
 import SearchBar from './components/SearchBar'
 import DecayChart from './components/DecayChart'
@@ -44,14 +43,6 @@ export default function App() {
 
       <DecayChart />
 
-      <div className="flex justify-center gap-4 mt-10">
-        <Link to="/graph/BOE-A-2015-10565" className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-medium transition">
-          {t.exploreGraph}
-        </Link>
-        <Link to="/simulator" className="px-6 py-3 bg-red-600/80 hover:bg-red-500 text-white rounded-lg font-medium transition">
-          {lang === 'es' ? '🔬 Simulador de Derogación' : '🔬 Repeal Simulator'}
-        </Link>
-      </div>
     </div>
   )
 }

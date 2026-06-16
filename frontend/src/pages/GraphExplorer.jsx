@@ -170,7 +170,7 @@ export default function GraphExplorer() {
       g.selectAll('text').attr('x', d => d.x).attr('y', d => d.y)
     })
 
-    // Zoom to fit after stabilization
+    // Zoom to fit after simulation stabilizes
     setTimeout(() => {
       const bounds = g.node().getBBox()
       if (bounds.width === 0) return
@@ -178,13 +178,14 @@ export default function GraphExplorer() {
       const tx = width / 2 - (bounds.x + bounds.width / 2) * scale
       const ty = height / 2 - (bounds.y + bounds.height / 2) * scale
       svg.transition().duration(500).call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale))
-    }, 800)
+    }, 1200)
 
     return () => { tooltip.remove(); simulation.stop() }
   }, [graphData, centerId])
 
   // Pan camera + highlight when a DIFFERENT node is selected
   const prevSelectedId = useRef(null)
+  const isInitialLoad = useRef(true)
   useEffect(() => {
     if (!selectedNode || !d3Refs.current.node || !svgRef.current) return
     const { zoom, node } = d3Refs.current
@@ -194,17 +195,20 @@ export default function GraphExplorer() {
     node.attr('stroke', n => n.id === selectedNode.id ? '#fff' : '#0f172a')
       .attr('stroke-width', n => n.id === selectedNode.id ? 3 : 1.5)
 
-    // Only pan if we selected a different node (not just toggling _showRels)
+    // Skip pan on initial load (zoom-to-fit handles it), allow all subsequent
     if (selectedNode.id !== prevSelectedId.current) {
-      const target = node.data().find(n => n.id === selectedNode.id)
-      if (target && target.x != null) {
-        const width = svg.node().getBoundingClientRect().width
-        const height = svg.node().getBoundingClientRect().height
-        const scale = 1.5
-        const tx = width / 2 - target.x * scale
-        const ty = height / 2 - target.y * scale
-        svg.transition().duration(400).call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale))
+      if (!isInitialLoad.current) {
+        const target = node.data().find(n => n.id === selectedNode.id)
+        if (target && target.x != null) {
+          const width = svg.node().getBoundingClientRect().width
+          const height = svg.node().getBoundingClientRect().height
+          const scale = 1.5
+          const tx = width / 2 - target.x * scale
+          const ty = height / 2 - target.y * scale
+          svg.transition().duration(400).call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale))
+        }
       }
+      isInitialLoad.current = false
       prevSelectedId.current = selectedNode.id
       // Fetch repeal impact for this node
       api(`/api/bonus/repeal-simulator/${selectedNode.id}`).then(d => {
